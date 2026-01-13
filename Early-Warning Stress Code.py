@@ -1,13 +1,11 @@
 import io
-import os
+from io import StringIO
 from pathlib import Path
-
+import os
 import pandas as pd
 import requests
 import zipfile
-
-from io import StringIO
-
+import matplotlib.pyplot as plt
 
 # ----------------------------
 # Config
@@ -21,11 +19,7 @@ PID_LFS = "14100287"       # 14-10-0287-01 Labour Force Survey
 PID_GDP_IND = "36100434"   # 36-10-0434-01 GDP by industry (monthly)
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
-
-WDS_ENDPOINTS = [
-    "https://www150.statcan.gc.ca/t1/wds/en/grp/wds/getFullTableDownloadCSV",
-]
-
+WDS_ENDPOINTS = ["https://www150.statcan.gc.ca/t1/wds/en/grp/wds/getFullTableDownloadCSV",]
 DIRECT_ZIP_TPL = "https://www150.statcan.gc.ca/n1/tbl/csv/{pid}-{lang}.zip"
 
 
@@ -34,7 +28,6 @@ DIRECT_ZIP_TPL = "https://www150.statcan.gc.ca/n1/tbl/csv/{pid}-{lang}.zip"
 # ----------------------------
 def _contains(s: pd.Series, pattern: str) -> pd.Series:
     return s.astype(str).str.contains(pattern, case=False, na=False)
-
 
 def _pick_label(df: pd.DataFrame, col: str, preferred: list[str], pattern: str | None = None) -> str | None:
     if col not in df.columns:
@@ -48,7 +41,6 @@ def _pick_label(df: pd.DataFrame, col: str, preferred: list[str], pattern: str |
         if not matches.empty:
             return matches.value_counts().idxmax()
     return None
-
 
 def _parse_statcan_download_response(resp: requests.Response, headers: dict, timeout: int) -> pd.DataFrame:
     content_type = resp.headers.get("Content-Type", "").lower()
@@ -75,7 +67,6 @@ def _parse_statcan_download_response(resp: requests.Response, headers: dict, tim
             return pd.read_csv(zf.open(csv_name[0]), low_memory=False)
 
     return pd.read_csv(io.BytesIO(content), low_memory=False)
-
 
 def statcan_full_table_csv(pid: str, timeout: int = 120) -> pd.DataFrame:
     headers = {"User-Agent": UA}
@@ -111,16 +102,13 @@ def statcan_full_table_csv(pid: str, timeout: int = 120) -> pd.DataFrame:
 
     raise RuntimeError(f"Failed to download PID {pid}. Last error from {last_err[0]}: {last_err[1]}")
 
-
 def to_month_start(s: pd.Series) -> pd.Series:
     # StatsCan REF_DATE is like "1914-01" -> convert to datetime (month start)
     return pd.to_datetime(s, format="%Y-%m")
 
-
 def safe_numeric(s: pd.Series) -> pd.Series:
     return pd.to_numeric(s, errors="coerce")
 
-# Bank of Canada (Valet): helpers
 def boc_group_csv(group: str, start_date: str = "1990-01-01", timeout: int = 120) -> pd.DataFrame:
     """
     Download a BoC Valet group as CSV.
@@ -149,7 +137,6 @@ def boc_group_csv(group: str, start_date: str = "1990-01-01", timeout: int = 120
 
     df["date"] = pd.to_datetime(df["date"])
     return df
-
 
 # ----------------------------
 # CPI: Canada all-items -> YoY inflation %
@@ -185,7 +172,6 @@ def build_cpi_yoy_canada(df_cpi: pd.DataFrame) -> pd.DataFrame:
 
     out = sub[["date", "cpi_inflation_yoy_pct"]].dropna().reset_index(drop=True)
     return out
-
 
 # ----------------------------
 # Unemployment: Canada, SA, 15+ (Both sexes)
@@ -253,7 +239,6 @@ def build_unemployment_rate_canada_sa(df_lfs: pd.DataFrame) -> pd.DataFrame:
 
     out = sub.rename(columns={"VALUE": "unemployment_rate_sa_pct"}).reset_index(drop=True)
     return out
-
 
 # ----------------------------
 # Monthly real GDP (by industry): Canada, SA, all industries -> MoM growth %
@@ -373,7 +358,6 @@ def build_policy_rate_monthly_canada(start_date: str = "1990-01-01") -> pd.DataF
 
     return policy.sort_values("date").reset_index(drop=True)
 
-
 # ----------------------------
 # BoC: Yield curve slope (10Y - 2Y) benchmark yields - monthly
 # ----------------------------
@@ -447,7 +431,7 @@ def main():
     print("Working directory:", os.getcwd())
     print("Saving outputs to:", OUTPUT_DIR)
 
-    # --- existing StatsCan specs unchanged ---
+    # --- CPI, Unemployment, GDP Growth (Statistics Canada) ---
     specs = [
         ("cpi", PID_CPI, "CPI table", "CPI YoY inflation (Canada, All-items)", build_cpi_yoy_canada, "cpi_inflation_yoy_canada.csv"),
         ("lfs", PID_LFS, "LFS table", "Unemployment rate (Canada, SA)", build_unemployment_rate_canada_sa, "unemployment_rate_sa_canada.csv"),
@@ -467,28 +451,28 @@ def main():
         outputs[key].to_csv(out_path, index=False)
         print("Saved:", out_path)
 
-    # --- NEW: OECD Consumer Confidence ---
+    # --- OECD (Consumer Confidence) ---
     print("Downloading OECD Consumer Confidence (Canada)...")
     df_cci = oecd_cli_cci_canada(start_period="1990-01")
     cci_path = OUTPUT_DIR / "consumer_confidence_oecd_canada.csv"
     df_cci.to_csv(cci_path, index=False)
     print("Saved:", cci_path)
 
-    # --- NEW: Bank of Canada (Policy rate) ---
+    # --- Bank of Canada (Policy rate) ---
     print("Downloading BoC policy rate (Canada)...")
     df_policy = build_policy_rate_monthly_canada(start_date="1990-01-01")
     policy_path = OUTPUT_DIR / "policy_rate_canada.csv"
     df_policy.to_csv(policy_path, index=False)
     print("Saved:", policy_path)
 
-    # --- NEW: Bank of Canada (Yield curve slope) ---
+    # --- Bank of Canada (Yield curve slope) ---
     print("Downloading BoC benchmark yields and building 10Y-2Y slope (Canada)...")
     df_slope = build_yield_curve_slope_10y_2y_monthly_canada(start_date="1990-01-01")
     slope_path = OUTPUT_DIR / "yield_curve_slope_10y_2y_canada.csv"
     df_slope.to_csv(slope_path, index=False)
     print("Saved:", slope_path)
 
-    # --- NEW: FRED Equity Market Volatility (VIX)
+    # --- FRED Equity Market Volatility (VIX)
     print("Downloading FRED VIX (monthly) ...")
     df_vix = build_vix_monthly_from_fred(how="avg")
     slope_path = OUTPUT_DIR / "yield_curve_slope_10y_2y_canada.csv"
@@ -506,10 +490,9 @@ def main():
         .merge(df_vix, on="date", how="inner")
         .sort_values("date")
     )
-    merged_path = OUTPUT_DIR / "macro_inputs_canada_monthly.csv"
+    merged_path = OUTPUT_DIR / "merged_inputs_canada_monthly.csv"
     merged.to_csv(merged_path, index=False)
-    print("Saved merged macro inputs:", merged_path)
-
+    print("Saved merged inputs:", merged_path)
     print("\nDone data acquisition.")
 
     df_stress = merged.copy()
@@ -518,28 +501,84 @@ def main():
     df_stress["unemp_stress"] = df_stress["unemployment_rate_sa_pct"]
     df_stress["gdp_stress"] = -df_stress["real_gdp_growth_mom_pct"]
     df_stress["cci_stress"] = -df_stress["consumer_confidence_index"]
+    
     df_stress["policy_stress"] = df_stress["policy_rate_pct"]
-    df_stress["slope_stress"] = df_stress["yield_curve_slope_10y_2y_pct"]
+    df_stress["slope_stress"] = -df_stress["yield_curve_slope_10y_2y_pct"]
     df_stress["vix_stress"] = df_stress["vix_monthly"]
 
     # Standardize using z-scores so everything is on the same scale
-    cols = ["cpi_stress", "unemp_stress", "gdp_stress", "cci_stress", "policy_stress", "slope_stress", "vix_stress"]
-    z = (df_stress[cols] - df_stress[cols].mean()) / df_stress[cols].std(ddof=0)
+    econ_cols = ["cpi_stress", "unemp_stress", "gdp_stress", "cci_stress"]
+    z = (df_stress[econ_cols] - df_stress[econ_cols].mean()) / df_stress[econ_cols].std(ddof=0)
     z = z.add_prefix("z_")
-    df_z = pd.concat([df_stress[["date"]], z], axis=1).dropna()
+    df_econ_z = pd.concat([df_stress[["date"]], z], axis=1).dropna()
 
-    # Build macro sub-index 
-    z_cols = ["z_cpi_stress", "z_unemp_stress", "z_gdp_stress", "z_cci_stress", "z_policy_stress", "z_slope_stress", "z_vix_stress"]
-    df_z["macro_stress_index"] = df_z[z_cols].mean(axis=1)
+    fin_cols = ["policy_stress", "slope_stress", "vix_stress"]
+    z_fin = (
+    df_stress[fin_cols]
+    .subtract(df_stress[fin_cols].mean())
+    .divide(df_stress[fin_cols].std(ddof=0))
+    .add_prefix("z_"))
+    df_fin_z = pd.concat([df_stress[["date"]], z_fin], axis=1).dropna()
 
-    # Create 1st plot
-    import matplotlib.pyplot as plt
+    # Build macroeconomic stress sub-index 
+    z_econ_cols = ["z_cpi_stress", "z_unemp_stress", "z_gdp_stress", "z_cci_stress"]
+    df_econ_z["macro_stress_index"] = df_econ_z[z_econ_cols].mean(axis=1)
+
+    # Build financial stress sub-index
+    z_fin_cols = ["z_policy_stress", "z_slope_stress", "z_vix_stress"]
+    df_fin_z["financial_stress_index"] = df_fin_z[z_fin_cols].mean(axis=1)
+
+    # Combine to macro-weighted overall stress index
+    df_all = df_econ_z.merge(df_fin_z, on="date", how="inner")
+    df_all["overall_stress_index"] = (
+    0.6 * df_all["macro_stress_index"] +
+    0.4 * df_all["financial_stress_index"])
+    
+    recessions = [
+    ("2001-03-01", "2002-01-01"),
+    ("2008-10-01", "2009-06-01"),
+    ("2020-03-01", "2020-04-01"),]
+
+    # Create macro stress index plot
     plt.figure()
-    plt.plot(df_z["date"], df_z["macro_stress_index"])
+    plt.plot(df_econ_z["date"], df_econ_z["macro_stress_index"])
+    for start, end in recessions:
+        plt.axvspan(pd.to_datetime(start), pd.to_datetime(end), color="grey",alpha=0.3)
     plt.title("Canada Macro Stress Index (standardized)")
     plt.xlabel("Date")
     plt.ylabel("Index (z-score)")
     plt.show()
+    
+    # Create financial stress index plot
+    plt.figure()
+    plt.plot(df_fin_z["date"], df_fin_z["financial_stress_index"])
+    for start, end in recessions:
+        plt.axvspan(pd.to_datetime(start), pd.to_datetime(end), color="grey",alpha=0.3)
+    plt.title("Canada Financial Stress Index (standardized)")
+    plt.xlabel("Date")
+    plt.ylabel("Index (z-score)")
+    plt.show()
+
+    # Create overall stress index plot
+    plt.figure()
+    plt.plot(df_all["date"], df_all["overall_stress_index"])
+    for start, end in recessions:
+        plt.axvspan(pd.to_datetime(start), pd.to_datetime(end), color="grey",alpha=0.3)
+    plt.title("Canada Overall Stress Index (standardized)")
+    plt.xlabel("Date")
+    plt.ylabel("Index (z-score)")
+    plt.show()
+
+    # Save outputs + components for PowerBI
+    long = df_all.melt(
+    id_vars="date",
+    value_vars=["macro_stress_index", "financial_stress_index", "overall_stress_index",],
+    var_name="series",
+    value_name="value")
+    long.to_csv("canada_stress_index_components.csv", index=False)
+
+
+    print("\nDone.")
 
 if __name__ == "__main__":
     main()
