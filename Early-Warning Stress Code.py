@@ -1,3 +1,10 @@
+# File Name: Early-Warning Stress Code.py
+# Author: William Driscoll
+
+# ----------------------------
+# Library Imports
+# ----------------------------
+
 import io
 from io import StringIO
 from pathlib import Path
@@ -6,6 +13,7 @@ import pandas as pd
 import requests
 import zipfile
 import matplotlib.pyplot as plt
+import numpy as np
 
 # ----------------------------
 # Config
@@ -568,6 +576,41 @@ def main():
     plt.xlabel("Date")
     plt.ylabel("Index (z-score)")
     plt.show()
+
+    # Create stress index component contributions
+    macro_components = ["z_cpi_stress","z_unemp_stress","z_gdp_stress","z_cci_stress"]
+    plt.figure(figsize=(10,5))
+    plt.stackplot(
+        df_all["date"],
+        [df_all[c] for c in macro_components],
+        labels=["Inflation", "Unemployment", "GDP growth", "Confidence"],
+        alpha=0.8)
+    plt.title("Macro Stress Index — Component Contributions")
+    plt.ylabel("Contribution (z-score)")
+    plt.legend(loc="upper left")
+    plt.show()
+
+    #Perform lead-lag check
+    lead_lag = df_stress.merge(df_all[["date", "overall_stress_index"]], on="date", how="inner")
+    stress = lead_lag["overall_stress_index"]
+    unemp = lead_lag["unemployment_rate_sa_pct"]
+    max_lag = 24  # months
+    lags = range(-max_lag, max_lag + 1)
+    cors = []
+    for lag in lags:
+        cors.append(stress.corr(unemp.shift(-lag)))
+    lead_lag_df = pd.DataFrame({
+        "lag_months": lags,
+        "correlation": cors})
+    # Plot lead-lag check
+    plt.figure(figsize=(8,4))
+    plt.plot(lead_lag_df["lag_months"], lead_lag_df["correlation"])
+    plt.axvline(0, color="black", linestyle="--")
+    plt.title("Lead–Lag: Stress Index vs Unemployment")
+    plt.xlabel("Stress leads ←  Lag (months)  → Unemployment leads")
+    plt.ylabel("Correlation")
+    plt.show()
+
 
     # Save outputs + components for PowerBI
     long = df_all.melt(
